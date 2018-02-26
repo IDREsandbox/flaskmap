@@ -1,11 +1,7 @@
 
 *.h
 Lib/
-Static/
 Include/
 Scripts/
 tcl/
 *.pyc
-static/bootstrap.css
-
-static/bootstrap.min.css.map
