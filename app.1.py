@@ -3,6 +3,7 @@ from flask import Flask, jsonify, render_template, request
 import simplejson
 from playhouse.shortcuts import model_to_dict, dict_to_model
 from flask_marshmallow import Marshmallow
+import geoalchemy2
 
 # define the app here
 app = Flask(__name__)
@@ -18,7 +19,7 @@ class bookingSchema(ma.Schema):
 	class Meta:
 		# Fields to expose through api
 		# fields = ('fid', 'desc_', 'slug','sex','home_addre','x','y')
-		fields = ('booking_nu','sex','race','charge_des','charge_lev','year','x','y','slug','age_categories','_cost','distance')
+		fields = ('booking_nu','sex','race','charge','charge_des','charge_lev','bail','year','longitude','latitude','slug','age_categories')
 		json_module = simplejson
 
 booking_schema = bookingSchema()
@@ -50,24 +51,29 @@ def index():
 	# basicQuery()
 	neighborhoods = lasd.select(lasd.slug).distinct().order_by(lasd.slug.asc())
 	return render_template('index.html',neighborhoods = neighborhoods)
+	# bookings = lapd.select().where(lapd.slug == "downtown")
+	# count = lapd.select().where(lapd.slug == "downtown").count()
 
-# select bookings within a radius
+# @app.route('/<slug>')
+# def slug(slug=None):
+# 	basicQuery()
+# 	bookings = lapd.select().where(lapd.slug == slug)
+# 	count = lapd.select().where(lapd.slug == slug).count()
+# 	return render_template('index.html',bookings=bookings,count=count,neighborhoods = neighborhoods)
+
+# @app.route("/<slug>/<year>/bookings/", methods=['GET'])
+# def get_bookings(slug,year):
+# 	all_bookings = lasd.select().where(lasd.slug == slug,lasd.year==year)
+# 	# all_bookings = lasd.select().where(lasd.slug == slug)
+# 	result = bookings_schema.dump(all_bookings)
+# 	return jsonify(result.data)
 @app.route("/bookings/<lat>/<lng>/<distance>", methods=['GET'])
 def get_bookings_by_distance(lat,lng,distance):
-	coords = lng+' '+lat
-	all_bookings = lasd.select().where(fn.ST_DWithin(lasd.geom, fn.ST_GeogFromText('POINT('+coords+')'),distance))
+	all_bookings = lasd.select().where(ST_DWithin(geom,ST_GeogFromText('POINT(lng lat)'),distance,false))
+	# all_bookings = lasd.select().where(lasd.slug == slug)
 	result = bookings_schema.dump(all_bookings)
 	return jsonify(result.data)
 
-# select cost from a given point
-@app.route("/cost/<lat>/<lng>", methods=['GET'])
-def get_cost_by_distance(lat,lng):
-	coords = lng+' '+lat
-	all_bookings = lasd.select(lasd.sex,lasd.race,lasd.charge_des,lasd.charge_lev,lasd.year,lasd.x,lasd.y,lasd.slug,lasd.age_categories,lasd._cost,fn.ST_Distance(lasd.geom, fn.ST_GeogFromText('POINT('+coords+')')).alias('distance')).order_by(fn.ST_Distance(lasd.geom, fn.ST_GeogFromText('POINT('+coords+')'))).limit(1000)
-	result = bookings_schema.dump(all_bookings)
-	return jsonify(result.data)
-
-# get bookings by neighborhood
 @app.route("/<slug>/bookings/", methods=['GET'])
 def get_bookings(slug):
 	all_bookings = lasd.select().where(lasd.slug == slug)

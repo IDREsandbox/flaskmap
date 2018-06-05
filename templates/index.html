@@ -18,6 +18,16 @@
 		text-shadow: 0 0 10px #000000;
 		color: #ffffff;
 	}
+	#subtitle {
+		position:absolute;
+		top: 100px;
+		left: 10px;		
+		z-index: 99999;
+		font-size: 2em;
+		/* opacity: .7; */
+		text-shadow: 0 0 10px #000000;
+		color: #ffffff;
+	}
 
 	.map-overlay {
 		z-index: 9999;
@@ -55,6 +65,8 @@
 
 <div id="map"></div>
 <div id="year"></div>
+<div id="subtitle"></div>
+
 <div id="basemaps">
 	<img id="basemap-dark" class="img-thumbnail" src="./static/images/dark.png">
 	<img id="basemap-light" class="img-thumbnail" src="./static/images/light.png">
@@ -75,6 +87,9 @@
 		<button id="what-sex" type="button" class="btn btn-primary btn-info btn-sm">
 			sex
 		</button>
+		<button id="what-age" type="button" class="btn btn-primary btn-info btn-sm">
+			age
+		</button>
 		<button id="what-charge" type="button" class="btn btn-primary btn-info btn-sm">
 			charge
 		</button>
@@ -82,7 +97,7 @@
 	</div>
 	<div class="card-body" style="padding:10px 0px;margin: auto;">
 		<h6 id="chart-title"></h6>
-		<div id="chart" style=""></div>
+		<div id="chart"></div>
 		<button id="play" type="button" class="btn btn-primary btn-light btn-sm">
 			Play
 		</button>
@@ -118,13 +133,18 @@ var mdh 					= {};
 mdh.years 					= ['2012','2013','2014','2015','2016']
 mdh.year 					= "";
 mdh.neighborhood 			= "downtown";
+mdh.lat						= '';
+mdh.lng						= '';
 mdh.data 					= {};
+mdh.data['circle'] = {};
 mdh.data[mdh.neighborhood] 	= {};
+mdh.hoverCategory 			= '';
+mdh.cost 					= 0;
 
-mdh.whatarewemapping 		= 'sex'; //sex, etc
-mdh.categories 				= ['M','F'];
-// mdh.whatarewemapping 		= 'race'; //sex, etc
-// mdh.categories 				= ['White','Black','Hispanic','Other'];
+// mdh.whatarewemapping 		= 'sex'; //sex, etc
+// mdh.categories 				= ['M','F'];
+mdh.whatarewemapping 		= 'race'; //sex, etc
+mdh.categories 				= ['White','Black','Hispanic','Other'];
 
 mdh.categories_count 		= {};
 mdh.categoryLayer 			= {};
@@ -141,7 +161,7 @@ mdh.neighborhoodpolygon;
 // basemaps
 mdh.basemap_sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
 	attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
-	maxZoom: 15,
+	maxZoom: 20,
 	// opacity: 0.5
 });
 mdh.basemap_light = L.tileLayer('https://cartodb-basemaps-{s}.global.ssl.fastly.net/light_all/{z}/{x}/{y}.png', {
@@ -192,6 +212,9 @@ function start()
 	mdh.basemap.addTo(map);
 
 	var popup = L.popup();
+
+	// map onclick event
+	map.on('click', drawRadius);
 
 	getData();
 
@@ -266,10 +289,31 @@ function start()
 		mdh.whatarewemapping = 'sex'
 		changeWhatWeAreMapping();
 	});
+	$('#what-age').click(function(){
+		mdh.whatarewemapping = 'age'
+		changeWhatWeAreMapping();
+	});
 	$('#what-charge').click(function(){
 		mdh.whatarewemapping = 'charge'
 		changeWhatWeAreMapping();
 	});
+}
+
+var drawRadius = function(e)
+{
+	// var circle = L.circle([e.latlng.lat,e.latlng.lng], {
+	// 	color: 'red',
+	// 	fillColor: '#f03',
+	// 	fillOpacity: 0.5,
+	// 	radius: 1000
+	// }).addTo(map);
+
+	mdh.neighborhood = 'circle';
+	mdh.lat = e.latlng.lat;
+	mdh.lng = e.latlng.lng;
+
+	getData();
+
 }
 
 var changeWhatWeAreMapping = function()
@@ -283,6 +327,10 @@ var changeWhatWeAreMapping = function()
 	else if (mdh.whatarewemapping == 'sex')
 	{
 		mdh.categories = ['M','F'];
+	}
+	else if (mdh.whatarewemapping == 'age')
+	{
+		mdh.categories = ['under 24','24 to 60','over 60'];
 	}
 	else if (mdh.whatarewemapping == 'charge')
 	{
@@ -301,24 +349,121 @@ var drawYear = function()
 	if(mdh.year == '')
 	{
 		$('#year').html('2012-2016');
+		$('#year-subtitle').html(mdh.hoverCategory)
 	}
 	else
 	{
 		$('#year').html(mdh.year);
+		$('#year-subtitle').html(mdh.hoverCategory)
 	}
 }
+
+var drawCircleMarker = function(options)
+{
+	markerOptions =
+		{
+			radius: 3,
+			fillColor: 'red',
+			// fillColor: categories.options.race.color,
+			color: "white",
+			weight: 1,
+			opacity: 1,
+			fillOpacity: 0.9
+		}
+
+	thisMarker = L.circleMarker([options.y, options.x], markerOptions).bindPopup("<b>" + options.charge_des + "</b>").addTo(map);
+
+}
+var timer;
+
 var getData = function()
 {
 	console.log('getting data')
 	$.each(mdh.years,function(i,val){
 		mdh.data[mdh.neighborhood][val] = [];
 	})
-	$.getJSON("/"+mdh.neighborhood+"/bookings",function(data){
-		$.each(data,function(i,val){
-			mdh.data[mdh.neighborhood][val.year].push(val);
-		});
-		getMarkers();
-	})
+
+	//reset cost 
+	mdh.cost= 0;
+
+	if(mdh.neighborhood == 'circle')
+	{
+					// drawNeighborhood();
+		var Mindex = '';
+		var Mdata = {};
+		$.getJSON("/cost/" + mdh.lat + "/" + mdh.lng, function (data) {
+			Mdata = data;
+			console.log(data)
+
+			// find out when we reach a million
+			$.each(data, function (i,val) {
+				mdh.cost = mdh.cost + val._cost;
+				if (mdh.cost < 1000000) 
+				{
+					Mindex = i
+				}
+			});
+
+			console.log('M index is '+Mindex)
+			// reset cost to zero
+			mdh.cost = 0;
+
+			$.each(data, function (i, val) {
+				mdh.data[mdh.neighborhood][val.year].push(val);
+				mdh.cost = mdh.cost + val._cost;
+
+
+				// if(i <= Mindex+1)
+				// {
+				// 	timer = setTimeout(function () {
+				// 		mdh.cost = mdh.cost + val._cost;
+				// 		if (i == Mindex + 1) 
+				// 		{
+				// 			$('#subtitle').html('$' + numberWithCommas(Math.round(mdh.cost)));
+				// 			$('#subtitle').append(' (' + numberWithCommas(Math.round(data[i].distance)) + ' meters)');
+				// 			drawCircleMarker(data[i]);
+				// 			options = {
+				// 				color: 'red',
+				// 				fillOpacity: 0.1,
+				// 				opacity: 0.8,
+				// 				radius: data[i].distance
+				// 			}
+
+				// 			mdh.neighborhoodpolygon = L.circle([mdh.lat, mdh.lng], options).addTo(map);
+				// 			map.fitBounds(mdh.neighborhoodpolygon.getBounds())
+
+				// 		}
+				// 		else 
+				// 		{
+				// 			// Mindex = i
+				// 			// mdh.data[mdh.neighborhood][val.year].push(val);
+				// 			$('#subtitle').html('$' + numberWithCommas(Math.round(mdh.cost)));
+				// 			drawCircleMarker(data[i]);
+				// 		}
+				// 	}, i * 5);
+				// }
+				// else
+				// {
+				// 	console.log('million dollar hood created...')
+				// 	return false;
+				// }
+			})
+			getMarkers();
+
+
+		})
+	}
+	else
+	{
+		$.getJSON("/" + mdh.neighborhood + "/bookings", function (data) {
+			$.each(data, function (i, val) {
+				mdh.data[mdh.neighborhood][val.year].push(val);
+				mdh.cost = mdh.cost + val._cost;
+			});
+			getMarkers();
+		})
+
+	}
 }
 
 var changeBaseMap = function(basemapid) {
@@ -349,12 +494,16 @@ var getMarkers = function () {
 	{
 		$.each(mdh.years,function(j,year){
 			$.each(mdh.data[mdh.neighborhood][year], function (i, val) {
+				// console.log(val._cost)
 				options = {
-					lat: val.latitude,
-					lon: val.longitude,
+					lat: val.y,
+					lon: val.x,
 					charge: val.charge_des,
 					race: val.race,
-					sex: val.sex
+					sex: val.sex,
+					age: val.age_categories,
+					cost: val._cost
+
 				}
 				addMarker2Layer(options);
 			})
@@ -364,11 +513,13 @@ var getMarkers = function () {
 	{
 		$.each(mdh.data[mdh.neighborhood][mdh.year], function (i, val) {
 			options = {
-				lat: val.latitude,
-				lon: val.longitude,
+				lat: val.y,
+				lon: val.x,
 				charge: val.charge_des,
 				race: val.race,
-				sex: val.sex
+				sex: val.sex,
+				age: val.age_categories,
+				cost: val._cost
 			}
 			addMarker2Layer(options);
 		})
@@ -387,7 +538,6 @@ var getMarkers = function () {
 var drawNeighborhood = function()
 {
 	// first remove existing polygon
-	console.log(mdh.neighborhoodpolygon);
 	$('#chart-title').html(mdh.neighborhood.toUpperCase())
 	if(typeof mdh.neighborhoodpolygon !== "undefined")
 	{
@@ -403,24 +553,40 @@ var drawNeighborhood = function()
 		var neighborhood_color = 'white';
 	}
 	
-	// get the geojson and draw the neighborhood
-	$.getJSON('../static/geojson/neighborhoods.geojson',function(data){
-		$.each(data.features,function(i,val){
-			if(val.properties.slug == mdh.neighborhood)
-			{
-				options = {
-					color: neighborhood_color,
-					fillOpacity: 0.1,
-					opacity: 0.8
+	if(mdh.neighborhood == 'circle')
+	{
+		options = {
+			color: neighborhood_color,
+			fillOpacity: 0.1,
+			opacity: 0.8,
+			radius: 1000
+		}
+
+		mdh.neighborhoodpolygon = L.circle([mdh.lat,mdh.lng], options).addTo(map);
+		map.fitBounds(mdh.neighborhoodpolygon.getBounds())
+
+	}
+	else
+	{
+		// get the geojson and draw the neighborhood
+		$.getJSON('../static/geojson/neighborhoods.geojson', function (data) {
+			$.each(data.features, function (i, val) {
+				if (val.properties.slug == mdh.neighborhood) {
+					options = {
+						color: neighborhood_color,
+						fillOpacity: 0.1,
+						opacity: 0.8
+					}
+					mdh.neighborhoodpolygon = L.geoJSON(val, options);
+					mdh.neighborhoodpolygon.addTo(map);
+					map.fitBounds(mdh.neighborhoodpolygon.getBounds())
 				}
-				mdh.neighborhoodpolygon = L.geoJSON(val,options);
-				mdh.neighborhoodpolygon.addTo(map);
-				map.fitBounds(mdh.neighborhoodpolygon.getBounds())
-			}
-		})
+			})
 			mdh.neighborhoodpolygon.bringToBack();
 
-	});
+		});
+	}
+
 }
 
 var drawPieChart = function(chartdata)
@@ -514,6 +680,10 @@ var drawStackedChart = function()
 					{
 						fieldname = 'charge_des'
 					}
+					else if (mdh.whatarewemapping == 'age')
+					{
+						fieldname = 'age_categories'
+					}
 					else
 					{
 						fieldname = mdh.whatarewemapping;
@@ -554,23 +724,20 @@ var drawStackedChart = function()
 		});
 	});
 	google.visualization.events.addListener(chart, 'onmouseover', function (data) {
-		console.log('mouseover')
 		mdh.year = mdh.years[data.row];
+		mdh.hoverCategory = mdh.categories[data.column - 1];
 		$('.btn').removeClass('active');
 		$('.'+mdh.year).addClass('active');
-		// mdh.year = 2012;
+		// // mdh.year = 2012;
 		drawYear();
-		getMarkers();
 
 		hoverPie(mdh.categories[data.column - 1])
 	});
-
 }
 
 
 var hoverPie = function(category2isolate)
 {
-
 	$.each(mdh.categories,function(i,category){
 		if(category == category2isolate)
 		{
@@ -581,7 +748,6 @@ var hoverPie = function(category2isolate)
 			map.removeLayer(mdh.categoryLayer[category]);
 		}
 	})
-
 }
 
 function addMarker2Layer(options){
@@ -636,6 +802,9 @@ function addMarker2Layer(options){
 
 }
 
+numberWithCommas = function (x) {
+	return x.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
 
 </script>
 {% endblock %}
